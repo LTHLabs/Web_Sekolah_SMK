@@ -7,7 +7,7 @@ interface Message {
   content: string;
   timestamp: Date;
 }
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
 
 export default function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -57,61 +57,34 @@ export default function ChatBot() {
     setIsLoading(true);
 
     try {
-      // Call Gemini API
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `Anda adalah chatbot bantuan untuk SMK Teknologi Nusantara, sebuah sekolah menengah kejuruan dengan program Teknik Informatika dan Robotika. 
-                  
-Informasi sekolah:
-- Nama: SMK Teknologi Nusantara
-- Alamat: Jl. Teknologi No. 123, Jakarta Timur
-- Telepon: (021) 2345678
-- Email: info@smkteknologinusantara.sch.id
-- Program: Teknik Informatika dan Robotika
-- Kepala Sekolah: Drs. Ahmad Wijaya, M.Pd
-- Jumlah Siswa: 500+
-- Jumlah Guru: 40+
+      // Send request to local serverless proxy which keeps the API key on the server
+      const systemPrompt = `Anda adalah chatbot bantuan untuk SMK Teknologi Nusantara, sebuah sekolah menengah kejuruan dengan program Teknik Informatika dan Robotika.\n\nInformasi sekolah:\n- Nama: SMK Teknologi Nusantara\n- Alamat: Jl. Teknologi No. 123, Jakarta Timur\n- Telepon: (021) 2345678\n- Email: info@smkteknologinusantara.sch.id\n- Program: Teknik Informatika dan Robotika\n- Kepala Sekolah: Drs. Ahmad Wijaya, M.Pd\n- Jumlah Siswa: 500+\n- Jumlah Guru: 40+\n\nVisi: Menjadi sekolah menengah kejuruan terkemuka yang menghasilkan lulusan berkompetensi tinggi di bidang teknologi.\n\nMisi:\n1. Menyelenggarakan pendidikan berkualitas di bidang teknologi\n2. Mengembangkan karakter siswa yang beriman dan bertakwa\n3. Mempersiapkan siswa untuk memasuki dunia kerja\n4. Membangun kemitraan strategis dengan industri\n\nJam operasional: Senin-Jumat 07:00-16:00, Sabtu 07:00-12:00\n\nJawab pertanyaan pengguna dengan ramah, informatif, dan sesuai dengan informasi sekolah di atas. Jika pertanyaan tidak terkait dengan sekolah, arahkan kembali ke topik sekolah.`;
 
-Visi: Menjadi sekolah menengah kejuruan terkemuka yang menghasilkan lulusan berkompetensi tinggi di bidang teknologi.
-
-Misi:
-1. Menyelenggarakan pendidikan berkualitas di bidang teknologi
-2. Mengembangkan karakter siswa yang beriman dan bertakwa
-3. Mempersiapkan siswa untuk memasuki dunia kerja
-4. Membangun kemitraan strategis dengan industri
-
-Jam operasional: Senin-Jumat 07:00-16:00, Sabtu 07:00-12:00
-
-Jawab pertanyaan pengguna dengan ramah, informatif, dan sesuai dengan informasi sekolah di atas. Jika pertanyaan tidak terkait dengan sekolah, arahkan kembali ke topik sekolah.
-
-Pertanyaan pengguna: ${inputValue}`,
-                },
-              ],
-            },
-          ],
-        }),
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: `${systemPrompt}\n\nPertanyaan pengguna: ${inputValue}` }),
       });
 
       if (!response.ok) {
-        throw new Error("API Error");
+        const errText = await response.text();
+        console.error('Upstream error:', errText);
+        throw new Error('API Error');
       }
 
       const data = await response.json();
+
+      // Try to extract text from common Gemini / GL responses; fallback to generic message
       const botResponse =
         data.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "Maaf, saya tidak dapat memproses pertanyaan Anda saat ini. Silakan coba lagi atau hubungi admin sekolah.";
+        data.output?.[0]?.content?.text ||
+        data.choices?.[0]?.message?.content ||
+        JSON.stringify(data).slice(0, 1000) ||
+        'Maaf, saya tidak dapat memproses pertanyaan Anda saat ini. Silakan coba lagi atau hubungi admin sekolah.';
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        type: "bot",
+        type: 'bot',
         content: botResponse,
         timestamp: new Date(),
       };
